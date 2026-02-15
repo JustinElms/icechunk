@@ -122,7 +122,7 @@ if __name__ == "__main__":
             if args.skip_existing:
                 nc_file_info = nc_file_info[nc_file_info["time_chunk_index"].isnull()]
 
-            timestamps = sorted(nc_file_info.timestamp.values)
+            timestamps = sorted(nc_file_info.timestamp.unique())
 
             with ProcessPoolExecutor(
                 max_workers=4,
