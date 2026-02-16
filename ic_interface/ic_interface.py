@@ -40,6 +40,8 @@ warnings.filterwarnings("ignore", category=zarr.errors.UnstableSpecificationWarn
 # - Add function to spot check data
 # - Add verification of dataset and ic config file - raise errors for bad or missing
 #   values
+# - Add option in config for all variables in one NC file
+# - Add option in config for multiple timestamps in one NC file
 
 
 class IcechunkInterface:
@@ -59,7 +61,7 @@ class IcechunkInterface:
             split_config = ManifestSplittingConfig.from_dict(
                 {
                     ManifestSplitCondition.AnyArray(): {
-                        ManifestSplitDimCondition.DimensionName("time"): 1
+                        ManifestSplitDimCondition.DimensionName("time"): 365
                     }
                 }
             )
@@ -139,9 +141,26 @@ class IcechunkInterface:
     def delete_branch(self, branch_id: str) -> None:
         self.repo.delete_branch(branch_id)
 
-    def get_dataset_nc_files(self) -> np.array:
+    def get_virtual_file_list(self) -> set:
+        """
+        Gets a set of all netcdf files used in virtual chunk references from the repo.
+        """
+        session = self.repo.readonly_session("main")
+        chunks = session.all_virtual_chunk_locations()
+
+        file_list = [c.replace("file://", "") for c in chunks]
+
+        return set(file_list)
+
+    def get_dataset_nc_files(self, skip_existing) -> list:
         """
         Gets all netcdf files in the datastore using dataset data_path_template.
+
+        Args:
+            skip_existing: Exclude files already referenced by the repo.
+
+        Returns:
+            A list of NetCDF files from the dataset.
         """
 
         template_keys = self.dataset_config["template_keys"]
@@ -155,6 +174,10 @@ class IcechunkInterface:
         filter_keys = self.dataset_config.get("path_filters")
         if filter_keys:
             nc_files = [f for f in nc_files if all([k not in f for k in filter_keys])]
+
+        if skip_existing:
+            current_nc_files = self.get_virtual_file_list()
+            nc_files = [f for f in nc_files if f not in current_nc_files]
 
         return nc_files
 
@@ -211,24 +234,29 @@ class IcechunkInterface:
             nc_df["variable"] = nc_df["variable"].apply(lambda v: variable_map[v])
         nc_df["file"] = nc_files
 
-        return nc_df
+        group_columns = [c for c in nc_df.columns if c not in ["file", "variable"]]
+        list_cols = [c for c in ["file", "variable"] if c in nc_df.columns]
+
+        return nc_df.groupby(group_columns)[list_cols].agg(list).reset_index()
 
     def get_nc_file_info(
         self,
         nc_files: list | None = [],
         start_date: str | None = None,
         end_date: str | None = None,
+        skip_existing: bool = False,
     ) -> pd.DataFrame:
         """
-        Generate an array of forcast metadata and file paths for a list of NetCDF files
-        or for each file in the datastore. Can be filtered to a specific period with
-        optional start_date and end_date args.
+        Generate a dataframe of forcast metadata and file paths for a list of NetCDF
+        files or for each file in the datastore. Can be filtered to a specific period
+        with optional start_date and end_date args.
 
         Args:
             nc_files: a list of NetCDF files to process. This will process all files in
                     the datastore if not provided.
-            start_date: the date of the initial forecast to be added to the repo
-            end_date: the date of the last forecast to be added to the repo
+            start_date: the date of the initial forecast to be added to the repo.
+            end_date: the date of the last forecast to be added to the repo.
+            skip_existing: ignore files that are aready referenced by the repo.
 
         Returns:
             list: a list of inputs that can be passed to write_timestamp formatted
@@ -236,7 +264,7 @@ class IcechunkInterface:
         """
 
         if len(nc_files) == 0:
-            nc_files = self.get_dataset_nc_files()
+            nc_files = self.get_dataset_nc_files(skip_existing)
 
         nc_info = self.nc_file_path_fcst_info(nc_files)
 
@@ -295,48 +323,29 @@ class IcechunkInterface:
                 nc_info.drop_duplicates(subset=filter_keys, keep="last", inplace=True)
 
             # ensure each timestamp includes all variables
-            ts_file_counts = nc_info.groupby(["timestamp"])["file"].transform("size")
-            if "variable_map" in template_keys:
+            file_counts = nc_info.file.apply(len)
+            if "variable" in nc_info.columns:
+                var_counts = nc_info.variable.apply(len)
                 nc_info = nc_info[
-                    (ts_file_counts == len(self.dataset_config["variable_map"]))
+                    (file_counts == var_counts)
                 ]
             else:
-                nc_info = nc_info[(ts_file_counts == ts_file_counts.max())]
+                nc_info = nc_info[(file_counts == file_counts.max())]
 
         return nc_info
 
-    def generate_commit_msg(
-        self, nc_file_info: pd.DataFrame, status: str = "success"
-    ) -> str:
+    def initialize_repo_arrays(self, nc_file_info: pd.DataFrame) -> None:
         """
-        Creates a commit message based on nc_file_info's columns.
+        Initializes dataset coordinate and variable arrays in repository.
 
         Args:
             nc_file_info: A DataFrame containing meta data for the NC files being
                             written.
-            status: Whether the commit was successful, raised on error, or the files
-                    were skipped. Must be "success", "error", or "skip".
-
         Returns:
-            The compiled commit message string.
+            None
         """
-        msg_info = []
-        for col in nc_file_info:
-            if col in ["forecast_date", "forecast_run", "forecast_time"]:
-                msg_info.append(nc_file_info[col].iloc[0])
 
-        if status == "success":
-            commit_msg = "Wrote data from " + " ".join(msg_info) + " forecast."
-        elif status == "error":
-            commit_msg = (
-                "Could not write data from " + " ".join(msg_info) + " forecast."
-            )
-        elif status == "skip":
-            commit_msg = "Skipped data from " + " ".join(msg_info) + " forecast."
-
-        return commit_msg
-
-    def initialize_repo_data(self, nc_file_info: pd.DataFrame) -> pd.DataFrame:
+        n_timestamps = len(nc_file_info.timestamp.unique())
         timestamp = nc_file_info.timestamp.min()
         ts_data = nc_file_info.loc[nc_file_info["timestamp"] == timestamp]
         parser_type = self.dataset_config.get("parser")
@@ -352,15 +361,68 @@ class IcechunkInterface:
         store = LocalStore(prefix="/data/")
         registry = ObjectStoreRegistry({file_url: store for file_url in file_urls})
 
-        session = self.repo.writable_session(branch="main")
-        with open_virtual_mfdataset(
+        ds = open_virtual_mfdataset(
             urls=file_urls,
             parser=parser,
             registry=registry,
             drop_variables=drop_vars,
             compat="override",
-        ) as vds:
-            vds.virtualize.to_icechunk(session.store)
-        session.commit(self.generate_commit_msg(ts_data))
+            decode_times=False,
+        )
 
-        return nc_file_info.drop(ts_data.index)
+        session = self.repo.writable_session(branch="main")
+
+        dataset = zarr.open_group(session.store)
+
+        # initialize dim arrays
+        for dim in ds.dims:
+
+            if dim == "time":
+                dim_array = dataset.create(
+                    dim,
+                    shape=tuple(
+                        [
+                            n_timestamps,
+                        ]
+                    ),
+                    dtype=ds[dim].dtype,
+                    dimension_names=list(ds[dim].dims),
+                    chunks=tuple(
+                        [
+                            1,
+                        ]
+                    ),
+                    compressors=[*ds[dim].encoding["compressors"]],
+                )
+                dim_array[:] = nc_file_info.timestamp.values.astype(ds[dim].dtype)
+            else:
+                dim_array = dataset.create(
+                    dim,
+                    shape=ds[dim].shape,
+                    dtype=ds[dim].dtype,
+                    dimension_names=list(ds[dim].dims),
+                    compressors=[*ds[dim].encoding["compressors"]],
+                )
+                dim_array[:] = ds[dim].data
+            for key, attr in ds[dim].attrs.items():
+                if isinstance(attr, np.float32):
+                    attr = np.float64(attr)
+                dim_array.attrs[key] = attr
+
+        # initialize variable arrays
+        for var in ds.data_vars:
+            var_shape = list(ds[var].shape)
+            time_dim_idx = ds[var].dims.index("time")
+            var_shape[time_dim_idx] = n_timestamps
+            var_array = dataset.create(
+                var,
+                shape=tuple(var_shape),
+                dtype=ds[var].dtype,
+                chunks=ds[var].chunks,
+                dimension_names=list(ds[var].dims),
+                compressors=[*ds[dim].encoding["compressors"]],
+            )
+            for key, attr in ds[var].attrs.items():
+                var_array.attrs[key] = attr
+
+        session.commit("Initialized repository arrays.")
