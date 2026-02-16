@@ -234,10 +234,7 @@ class IcechunkInterface:
             nc_df["variable"] = nc_df["variable"].apply(lambda v: variable_map[v])
         nc_df["file"] = nc_files
 
-        group_columns = [c for c in nc_df.columns if c not in ["file", "variable"]]
-        list_cols = [c for c in ["file", "variable"] if c in nc_df.columns]
-
-        return nc_df.groupby(group_columns)[list_cols].agg(list).reset_index()
+        return nc_df
 
     def get_nc_file_info(
         self,
@@ -323,14 +320,20 @@ class IcechunkInterface:
                 nc_info.drop_duplicates(subset=filter_keys, keep="last", inplace=True)
 
             # ensure each timestamp includes all variables
-            file_counts = nc_info.file.apply(len)
-            if "variable" in nc_info.columns:
-                var_counts = nc_info.variable.apply(len)
+            ts_file_counts = nc_info.groupby(["timestamp"])["file"].transform("size")
+            if "variable_map" in template_keys:
                 nc_info = nc_info[
-                    (file_counts == var_counts)
+                    (ts_file_counts == len(self.dataset_config["variable_map"]))
                 ]
             else:
-                nc_info = nc_info[(file_counts == file_counts.max())]
+                nc_info = nc_info[(ts_file_counts == ts_file_counts.max())]
+
+            # condense dataframe
+            group_columns = [
+                c for c in nc_info.columns if c not in ["file", "variable"]
+            ]
+            list_cols = [c for c in ["file", "variable"] if c in nc_info.columns]
+            nc_info = nc_info.groupby(group_columns)[list_cols].agg(list).reset_index()
 
         return nc_info
 
@@ -348,6 +351,7 @@ class IcechunkInterface:
         n_timestamps = len(nc_file_info.timestamp.unique())
         timestamp = nc_file_info.timestamp.min()
         ts_data = nc_file_info.loc[nc_file_info["timestamp"] == timestamp]
+        nc_files = ts_data["file"].values[0]
         parser_type = self.dataset_config.get("parser")
         drop_vars = self.dataset_config.get("drop_vars")
 
@@ -357,7 +361,7 @@ class IcechunkInterface:
             case _:
                 parser = HDFParser()
 
-        file_urls = [f"file://{file}" for file in ts_data["file"].values]
+        file_urls = [f"file://{file}" for file in nc_files]
         store = LocalStore(prefix="/data/")
         registry = ObjectStoreRegistry({file_url: store for file_url in file_urls})
 

@@ -104,5 +104,8 @@ if __name__ == "__main__":
                 remote_sessions = [f.result() for f in futures]
 
             session.merge(*remote_sessions)
-            session.commit(f"Wrote timestamps {ts_group[0]} - {ts_group[-1]}")
-            print(f"Wrote timestamps {ts_group[0]} - {ts_group[-1]}")
+            commit_msg = (
+                f"Wrote {len(ts_group)} timestamps {ts_group[0]} - {ts_group[-1]}"
+            )
+            session.commit(commit_msg)
+            print(commit_msg)
