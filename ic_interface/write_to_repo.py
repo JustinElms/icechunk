@@ -14,14 +14,14 @@ from icechunk import (
 
 
 def write_to_repo(
-    repo: Repository,
+    *,
+    repo: Repository = None,
+    storage_config: dict = {},
+    dataset_config: dict = {},
     commit_msg: str,
     nc_files: list = [],
-    drop_vars: list = [],
     time_chunk_index: int | None = None,
     append_dim: str = "time",
-    parser_type: str = "hdf5",
-    latest_only=False,
 ) -> None:
     """
     Initializes repository as virtual dataset with data in nc_files.
@@ -41,6 +41,10 @@ def write_to_repo(
     """
 
     logger = logging.getLogger("ic_interface")
+
+    drop_vars = dataset_config.get("drop_vars")
+    parser_type = dataset_config.get("parser_type")
+    latest_only = dataset_config.get("latest_only")
 
     match parser_type:
         case "nc3":
@@ -64,6 +68,7 @@ def write_to_repo(
         "lat",
         "lon",
     ]
+
     file_urls = [f"file://{file}" for file in nc_files]
     store = LocalStore(prefix="/data/")
     registry = ObjectStoreRegistry({file_url: store for file_url in file_urls})
@@ -88,9 +93,7 @@ def write_to_repo(
                 variables.append("time")
             for variable in variables:
                 chunks = []
-                for manifest_idx, spec in (
-                    vds[variable].data.manifest.dict().items()
-                ):
+                for manifest_idx, spec in vds[variable].data.manifest.dict().items():
                     index = list(map(int, manifest_idx.split(".")))
                     index[0] = int(time_chunk_index)
                     chunks.append(VirtualChunkSpec(index, *spec.values()))

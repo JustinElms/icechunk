@@ -59,6 +59,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     ic_interface = IcechunkInterface(args.key)
+    dataset_config = ic_interface.dataset_config
 
     log_queue = mp.Queue()
 
@@ -94,26 +95,23 @@ if __name__ == "__main__":
     if len(nc_file_info) == 0:
         sys.exit()
 
-    if ic_interface.dataset_config.get("latest_only"):
-        session = ic_interface.repo.writable_session(branch="main")
+    if dataset_config.get("latest_only"):
+        commit_msg = ic_interface.generate_commit_msg(nc_file_info)
         time_chunk_index = None
         if ic_interface.initialized:
             time_chunk_index = 0
-        session = ic_interface.write_repo_data(
-            session=session,
-            nc_files=nc_file_info["file"].values,
-            drop_vars=ic_interface.dataset_config.get("drop_vars"),
+        write_to_repo(
+            repo=ic_interface.repo,
+            dataset_config=dataset_config,
+            commit_msg=commit_msg,
+            nc_files=nc_file_info["file"].to_list(),
             time_chunk_index=time_chunk_index,
             append_dim=None,
-            parser_type=parser,
-            latest_only=True,
         )
-        session.commit(ic_interface.generate_commit_msg(nc_file_info))
 
     elif "timestamp" in nc_file_info.columns:
 
         while True:
-
             time_chunk_map = ic_interface.get_time_chunk_map()
             nc_file_info["time_chunk_index"] = nc_file_info["timestamp"].apply(
                 time_chunk_map.get
@@ -132,26 +130,24 @@ if __name__ == "__main__":
                 futures = []
                 for timestamp in timestamps:
                     ts_data = nc_file_info.loc[nc_file_info.timestamp == timestamp]
+                    nc_files = ts_data.file.to_list()
                     time_chunk_index = ts_data.time_chunk_index.values[0]
-
                     commit_msg = ic_interface.generate_commit_msg(ts_data)
+
                     futures.append(
                         executor.submit(
                             write_to_repo,
                             repo=ic_interface.repo,
+                            dataset_config=dataset_config,
                             commit_msg=commit_msg,
-                            nc_files=ts_data.file.values,
-                            drop_vars=[],
-                            time_chunk_index=ts_data.time_chunk_index.values[0],
+                            nc_files=nc_files,
+                            time_chunk_index=time_chunk_index,
                             append_dim="time",
-                            parser_type="hdf5",
-                            latest_only=False,
                         )
                     )
                 for future in as_completed(futures):
                     try:
                         future.result()
-                        break
                     except process.BrokenProcessPool:
                         root_logger.warning("The process pool is broken, restarting.")
                     except Exception as e:
