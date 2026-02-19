@@ -110,8 +110,8 @@ class IcechunkInterface:
 
         return f"{log_path}{dataset_key}_{start_time}.log"
 
-    def get_repo_timestamps(self) -> np.ndarray:
-        session = self.repo.readonly_session("main")
+    def get_repo_timestamps(self, branch: str = "main") -> np.ndarray:
+        session = self.repo.readonly_session(branch)
         try:
             with xr.open_zarr(
                 session.store, consolidated=False, decode_times=False
@@ -121,10 +121,10 @@ class IcechunkInterface:
             timestamps = []
         return timestamps
 
-    def get_time_chunk_map(self) -> np.ndarray:
-        timestamps = self.get_repo_timestamps()
+    def get_time_chunk_map(self, branch: str = "main") -> np.ndarray:
+        timestamps = self.get_repo_timestamps(branch)
 
-        session = self.repo.readonly_session("main")
+        session = self.repo.readonly_session(branch)
         chunks = session.store.list()
         time_chunks = [chunk for chunk in chunks if "time/c/" in chunk]
         time_indexes = [int(tc.replace("time/c/", "")) for tc in time_chunks]
@@ -132,6 +132,7 @@ class IcechunkInterface:
         return {int(ts): i for ts, i in zip(timestamps, time_indexes)}
 
     def create_branch(self, branch_id: str) -> None:
+        """ """
         branches = list(self.repo.list_branches())
         if branch_id in branches:
             return
@@ -139,7 +140,12 @@ class IcechunkInterface:
         self.repo.create_branch(branch_id, snapshot_id=snap_id)
 
     def delete_branch(self, branch_id: str) -> None:
+        """ """
         self.repo.delete_branch(branch_id)
+
+    def set_branch_ref(self, branch: str, snapshot_id: str) -> None:
+        """ """
+        self.repo.reset_branch(branch, snapshot_id=snapshot_id)
 
     def get_virtual_file_list(self) -> set:
         """
@@ -337,6 +343,32 @@ class IcechunkInterface:
 
         return nc_info
 
+    def append_timestamps(self, timestamps: int | list, branch: str = "main") -> None:
+        """ """
+        if not hasattr(timestamps, "__len__"):
+            timestamps = [timestamps]
+
+        session = self.repo.writable_session(branch)
+        dataset = zarr.open_group(session.store)
+        for array_key in dataset:
+            array = dataset[array_key]
+            if array_key == "time":
+                array.append(timestamps, axis=0)
+            else:
+                dims = array.metadata.dimension_names
+                try:
+                    time_idx = dims.index("time")
+                except ValueError:
+                    continue
+                shape = list(array.shape)
+                shape[time_idx] = shape[time_idx] + len(timestamps)
+                array.resize(shape)
+
+        session.commit(
+            "Extended time dimension with timestamps "
+            f"{timestamps[0]} - {timestamps[-1]} ({len(timestamps)})."
+        )
+
     def initialize_repo_arrays(self, nc_file_info: pd.DataFrame) -> None:
         """
         Initializes dataset coordinate and variable arrays in repository.
@@ -348,9 +380,8 @@ class IcechunkInterface:
             None
         """
 
-        n_timestamps = len(nc_file_info.timestamp.unique())
-        timestamp = nc_file_info.timestamp.min()
-        ts_data = nc_file_info.loc[nc_file_info["timestamp"] == timestamp]
+        timestamps = sorted(nc_file_info.timestamp.unique())
+        ts_data = nc_file_info.loc[nc_file_info["timestamp"] == timestamps[0]]
         nc_files = ts_data["file"].values[0]
         parser_type = self.dataset_config.get("parser")
         drop_vars = self.dataset_config.get("drop_vars")
@@ -365,68 +396,17 @@ class IcechunkInterface:
         store = LocalStore(prefix="/data/")
         registry = ObjectStoreRegistry({file_url: store for file_url in file_urls})
 
-        ds = open_virtual_mfdataset(
+        session = self.repo.writable_session("main")
+        with open_virtual_mfdataset(
             urls=file_urls,
             parser=parser,
             registry=registry,
             drop_variables=drop_vars,
             compat="override",
             decode_times=False,
-        )
+        ) as vds:
+            vds.vz.to_icechunk(session.store)
 
-        session = self.repo.writable_session(branch="main")
+        session.commit(f"Initialized data arrays with timestamps {timestamps[0]}")
 
-        dataset = zarr.open_group(session.store)
-
-        # initialize dim arrays
-        for dim in ds.dims:
-
-            if dim == "time":
-                dim_array = dataset.create(
-                    dim,
-                    shape=tuple(
-                        [
-                            n_timestamps,
-                        ]
-                    ),
-                    dtype=ds[dim].dtype,
-                    dimension_names=list(ds[dim].dims),
-                    chunks=tuple(
-                        [
-                            1,
-                        ]
-                    ),
-                    compressors=[*ds[dim].encoding["compressors"]],
-                )
-                dim_array[:] = nc_file_info.timestamp.values.astype(ds[dim].dtype)
-            else:
-                dim_array = dataset.create(
-                    dim,
-                    shape=ds[dim].shape,
-                    dtype=ds[dim].dtype,
-                    dimension_names=list(ds[dim].dims),
-                    compressors=[*ds[dim].encoding["compressors"]],
-                )
-                dim_array[:] = ds[dim].data
-            for key, attr in ds[dim].attrs.items():
-                if isinstance(attr, np.float32):
-                    attr = np.float64(attr)
-                dim_array.attrs[key] = attr
-
-        # initialize variable arrays
-        for var in ds.data_vars:
-            var_shape = list(ds[var].shape)
-            time_dim_idx = ds[var].dims.index("time")
-            var_shape[time_dim_idx] = n_timestamps
-            var_array = dataset.create(
-                var,
-                shape=tuple(var_shape),
-                dtype=ds[var].dtype,
-                chunks=ds[var].chunks,
-                dimension_names=list(ds[var].dims),
-                compressors=[*ds[dim].encoding["compressors"]],
-            )
-            for key, attr in ds[var].attrs.items():
-                var_array.attrs[key] = attr
-
-        session.commit("Initialized repository arrays.")
+        self.append_timestamps(timestamps[1:])

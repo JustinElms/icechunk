@@ -1,6 +1,7 @@
 {
     "name": "giops_day",
     "data_path_template": "/data/hpfx.collab.science.gc.ca/{forecast_date}/WXO-DD/model_giops/netcdf/lat_lon/3d/{forecast_run}/{forecast_time}/CMC_giops_{variable}_depth_all_*.nc",
+    "path_filters":["/00/000/"],
     "template_keys": [
         "forecast_date",
         "forecast_run",

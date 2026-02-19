@@ -24,12 +24,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--start_date",
-        help="The earliest timestamp date to include in YYYYMMDD format. (optional)",
+        help="The earliest forecast date to include in YYYYMMDD format. (optional)",
         default=None,
     )
     parser.add_argument(
         "--end_date",
-        help="The latest timestamp date to include in YYYYMMDD format. (optional)",
+        help="The latest forecast date to include in YYYYMMDD format. (optional)",
         default=None,
     )
     parser.add_argument(
@@ -76,6 +76,18 @@ if __name__ == "__main__":
             time_chunk_map.get
         )
 
+        while any(nc_file_info["time_chunk_index"].isnull()):
+            time_chunk_map = ic_interface.get_time_chunk_map()
+            nc_file_info["time_chunk_index"] = nc_file_info["timestamp"].apply(
+                time_chunk_map.get
+            )
+            new_timestamps = nc_file_info.loc[
+                nc_file_info["time_chunk_index"].isnull(), "timestamp"
+            ].values
+            if len(new_timestamps) == 0:
+                continue
+            ic_interface.append_timestamps(new_timestamps)
+
         timestamps = sorted(nc_file_info.timestamp.unique())
         ts_groups = np.array_split(timestamps, len(timestamps) / max_workers / 2)
 
@@ -108,4 +120,4 @@ if __name__ == "__main__":
                 f"Wrote {len(ts_group)} timestamps {ts_group[0]} - {ts_group[-1]}"
             )
             session.commit(commit_msg)
-            print(commit_msg)
+            logger.info(commit_msg)

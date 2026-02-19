@@ -1,6 +1,7 @@
 {
     "name": "giops_fc_10d_2dll",
     "data_path_template": "/data/hpfx.collab.science.gc.ca/{forecast_date}/WXO-DD/model_giops/netcdf/lat_lon/2d/{forecast_run}/{forecast_time}/CMC_giops_{variable}_*.nc",
+    "path_filters":["/00/000/"],
     "template_keys": [
         "forecast_date",
         "forecast_run",

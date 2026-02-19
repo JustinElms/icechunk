@@ -1,12 +1,29 @@
-from obstore.store import LocalStore
-from virtualizarr import open_virtual_mfdataset
-from virtualizarr.parsers import HDFParser, NetCDF3Parser
-from virtualizarr.registry import ObjectStoreRegistry
 from icechunk import (
     ForkSession,
     Session,
     VirtualChunkSpec,
 )
+from obstore.store import LocalStore
+from virtualizarr import open_virtual_mfdataset
+from virtualizarr.parsers import HDFParser, NetCDF3Parser
+from virtualizarr.registry import ObjectStoreRegistry
+
+COORDINATE_VARIABLES = [
+    "nav_lat_u",
+    "nav_lon_u",
+    "nav_lat_v",
+    "nav_lon_v",
+    "nav_lat",
+    "nav_lon",
+    "latitude_u",
+    "longitude_u",
+    "latitude_v",
+    "longitude_v",
+    "latitude",
+    "longitude",
+    "lat",
+    "lon",
+]
 
 
 def write_chunk_refs(
@@ -15,10 +32,9 @@ def write_chunk_refs(
     dataset_config: dict = {},
     nc_files: list = [],
     time_chunk_index: int | None = None,
-    append_dim: str = "time",
 ) -> None:
     """
-    Writes virtual chunk references from the give NetCDF files to the repository using
+    Writes virtual chunk references from the given NetCDF files to the repository using
     the provided session object. Commits must be handled externally using the returned
     session so that this function can be used with muliprocessing.
 
@@ -40,23 +56,6 @@ def write_chunk_refs(
         case _:
             parser = HDFParser()
 
-    coordinate_variables = [
-        "nav_lat_u",
-        "nav_lon_u",
-        "nav_lat_v",
-        "nav_lon_v",
-        "nav_lat",
-        "nav_lon",
-        "latitude_u",
-        "longitude_u",
-        "latitude_v",
-        "longitude_v",
-        "latitude",
-        "longitude",
-        "lat",
-        "lon",
-    ]
-
     file_urls = [f"file://{file}" for file in nc_files]
     store = LocalStore(prefix="/data/")
     registry = ObjectStoreRegistry({file_url: store for file_url in file_urls})
@@ -67,10 +66,11 @@ def write_chunk_refs(
         registry=registry,
         drop_variables=drop_vars,
         compat="override",
+        decode_times=False,
     ) as vds:
 
         # check if any coordinates are erroniously included in data variables
-        coord_data_vars = [v for v in vds.data_vars if v in coordinate_variables]
+        coord_data_vars = [v for v in vds.data_vars if v in COORDINATE_VARIABLES]
         for cdv in coord_data_vars:
             vds = vds.set_coords(cdv)
 
