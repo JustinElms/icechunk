@@ -1,5 +1,6 @@
 import glob
 import json
+import logging
 import os
 import warnings
 from datetime import datetime
@@ -48,12 +49,11 @@ class IcechunkInterface:
 
     def __init__(self, dataset_key: str) -> None:
         self.ic_config = self.__read_config("ic_config.json")
-
-        self.log_file = self.__configure_log_file(dataset_key)
-
         self.dataset_config = self.__read_config(
             f"{self.ic_config.get("dataset_configs_dir")}/{dataset_key}.json"
         )
+
+        self.__configure_logger(dataset_key)
 
         storage_config = self.__get_storage(dataset_key)
 
@@ -75,6 +75,7 @@ class IcechunkInterface:
             repo_config.set_virtual_chunk_container(virtual_container)
             self.repo = Repository.create(storage_config, config=repo_config)
             self.repo.save_config()
+            self.logger.info("\n***\n Created repository \n***")
         else:
             self.repo = Repository.open(
                 storage_config, authorize_virtual_chunk_access={"file:///data/": None}
@@ -100,15 +101,20 @@ class IcechunkInterface:
             config = json.load(f)
         return config
 
-    def __configure_log_file(self, dataset_key: str) -> None:
+    def __configure_logger(self, dataset_key: str) -> None:
 
         log_path = self.ic_config.get("log_directory")
 
         os.makedirs(log_path, exist_ok=True)
 
-        start_time = datetime.now().isoformat()
+        file_handler = logging.FileHandler(f"{log_path}{dataset_key}.log")
 
-        return f"{log_path}{dataset_key}_{start_time}.log"
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s: %(message)s",
+            handlers=[file_handler],
+        )
+        self.logger = logging.getLogger("ic_interface")
 
     def get_repo_timestamps(self, branch: str = "main") -> np.ndarray:
         session = self.repo.readonly_session(branch)
@@ -363,11 +369,12 @@ class IcechunkInterface:
                 shape = list(array.shape)
                 shape[time_idx] = shape[time_idx] + len(timestamps)
                 array.resize(shape)
-
-        session.commit(
-            "Extended time dimension with timestamps "
+        commit_msg = (
+            "Extended time dimension with timestamp(s) "
             f"{timestamps[0]} - {timestamps[-1]} ({len(timestamps)})."
         )
+        session.commit(commit_msg)
+        self.logger.info(commit_msg)
 
     def initialize_repo_arrays(self, nc_file_info: pd.DataFrame) -> None:
         """
@@ -407,6 +414,9 @@ class IcechunkInterface:
         ) as vds:
             vds.vz.to_icechunk(session.store)
 
-        session.commit(f"Initialized data arrays with timestamps {timestamps[0]}")
+        commit_msg = f"Initialized data arrays with timestamp(s) {timestamps[0]}"
+
+        session.commit(commit_msg)
+        self.logger.info(commit_msg)
 
         self.append_timestamps(timestamps[1:])
