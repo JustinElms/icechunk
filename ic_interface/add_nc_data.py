@@ -3,6 +3,7 @@ import logging
 import multiprocessing as mp
 import os
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 
 import numpy as np
 
@@ -14,13 +15,18 @@ if __name__ == "__main__":
     mp.set_start_method("forkserver")
     max_workers = int(os.cpu_count() / 2)
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Initialze and/or append data to the dataset Icechunk repository."
+            " One of -/dir/--nc_dir or -nc/--nc_files must be provided."
+        )
+    )
     parser.add_argument("key", help="The dataset key.", type=str)
     parser.add_argument(
         "-s",
         "--skip_existing",
         action="store_true",
-        help="Skip files that match timestamps in the dataset repo. (optional)",
+        help="Skip any files referenced in the dataset repo. (optional)",
     )
     parser.add_argument(
         "--start_date",
@@ -32,7 +38,18 @@ if __name__ == "__main__":
         help="The latest forecast date to include in YYYYMMDD format. (optional)",
         default=None,
     )
-    parser.add_argument(
+    file_args = parser.add_mutually_exclusive_group(required=True)
+    file_args.add_argument(
+        "-dir",
+        "--nc_dir",
+        help=(
+            "The path to directory containing the NetCDF or other format data files to"
+            " append."
+        ),
+        default=None,
+        type=str,
+    )    
+    file_args.add_argument(
         "-nc",
         "--nc_files",
         help=(
@@ -48,6 +65,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ic_interface = IcechunkInterface(args.key)
     dataset_config = ic_interface.dataset_config
+    initialized = ic_interface.initialized
 
     file_handler = logging.FileHandler(ic_interface.log_file)
 
@@ -59,23 +77,19 @@ if __name__ == "__main__":
     logger = logging.getLogger("init_ic_dataset")
     logger.setLevel(logging.INFO)
 
-    ic_interface = IcechunkInterface(args.key)
-    initialized = ic_interface.initialized
+    nc_files = args.nc_files
+    if args.nc_dir:
+        nc_files = list(Path(args.nc_dir).rglob("*.nc"))
 
     nc_file_info = ic_interface.get_nc_file_info(
-        args.nc_files, args.start_date, args.end_date, args.skip_existing
+        nc_files, args.start_date, args.end_date, args.skip_existing
     )
 
     if not ic_interface.initialized:
         ic_interface.initialize_repo_arrays(nc_file_info)
 
     if "timestamp" in nc_file_info.columns:
-
-        time_chunk_map = ic_interface.get_time_chunk_map()
-        nc_file_info["time_chunk_index"] = nc_file_info["timestamp"].apply(
-            time_chunk_map.get
-        )
-
+        nc_file_info["time_chunk_index"] = None
         while any(nc_file_info["time_chunk_index"].isnull()):
             time_chunk_map = ic_interface.get_time_chunk_map()
             nc_file_info["time_chunk_index"] = nc_file_info["timestamp"].apply(

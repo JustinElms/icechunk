@@ -216,7 +216,7 @@ class IcechunkInterface:
         template_keys = self.dataset_config["template_keys"]
         variable_map = self.dataset_config.get("variable_map")
 
-        nc_pts = np.array([f.split("/") for f in nc_files])
+        nc_pts = np.array([str(f).split("/") for f in nc_files])
         template_pts = np.array(path_template.split("/"))
 
         field_keys = {}
