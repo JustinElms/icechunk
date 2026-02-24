@@ -1,10 +1,7 @@
 {
     "name": "riops_fc_2dll",
     "latest_only": true,
-    "data_path_template": "/data/depot.cmc.ec.gc.ca/ftp/cmoi/dfo/dfo.ccg/{forecast_date}_CMC_riops_000_084_1h-inst_2D_latlon0.1x0.1.nc",
-    "template_keys": [
-        "forecast_date"
-    ],
+    "data_path_template": "/data/depot.cmc.ec.gc.ca/ftp/cmoi/dfo/dfo.ccg/*_CMC_riops_000_084_1h-inst_2D_latlon0.1x0.1.nc",
     "drop_vars": [
         "latitude_longitude"
     ],

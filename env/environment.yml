@@ -247,6 +247,7 @@ dependencies:
   - tk=8.6.13=noxft_h366c992_103
   - toolz=1.1.0=pyhd8ed1ab_1
   - tornado=6.5.4=py313hd02dea0_0
+  - tqdm=4.67.3=pyh8f84b5b_0
   - traitlets=5.14.3=pyhd8ed1ab_1
   - typing_extensions=4.15.0=pyhcf101f3_0
   - tzdata=2025c=hc9c84f9_1

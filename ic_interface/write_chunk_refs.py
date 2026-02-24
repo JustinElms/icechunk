@@ -31,7 +31,7 @@ def write_chunk_refs(
     session: Session | ForkSession = None,
     dataset_config: dict = {},
     nc_files: list = [],
-    time_chunk_index: int | None = None,
+    time_chunk_map: dict = {},
 ) -> None:
     """
     Writes virtual chunk references from the given NetCDF files to the repository using
@@ -40,8 +40,9 @@ def write_chunk_refs(
 
     args:
         session: An Icechunk Session or ForSession object.
+        dataset_config: A dict containing the dataset configuration.
         nc_files: A Pandas Dataframe containing NetCDF files and metadata.
-        time_chunk_index: The time chunk index of the data to be written.
+        time_chunk_map: A mapping of timestamps to their related chunks.
 
     returns:
         session: The Icechunk Session or ForSession object.
@@ -79,7 +80,8 @@ def write_chunk_refs(
             for manifest_idx, spec in vds[variable].data.manifest.dict().items():
                 index = list(map(int, manifest_idx.split(".")))
                 time_dim_idx = vds[variable].dims.index("time")
-                index[time_dim_idx] = int(time_chunk_index)
+                timestamp = vds.time.data[index[time_dim_idx]]
+                index[time_dim_idx] = int(time_chunk_map[timestamp])
                 chunks.append(VirtualChunkSpec(index, *spec.values()))
             session.store.set_virtual_refs(variable, chunks)
 

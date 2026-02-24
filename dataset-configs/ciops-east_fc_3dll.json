@@ -1,18 +1,12 @@
 {
     "name": "ciops-east_fc_3dll",
-    "data_path_template": "/data/hpfx.collab.science.gc.ca/{forecast_date}/WXO-DD/model_ciops/east/2km/{forecast_run}/{forecast_time}/*_MSC_CIOPS-East_{variable}_DBS-all_*.nc",
-    "template_keys": [
-        "forecast_date",
-        "forecast_run",
-        "forecast_time",
-        "variable"
+    "data_path_template": "/data/hpfx.collab.science.gc.ca/*/WXO-DD/model_ciops/east/2km/*/*/*_MSC_CIOPS-East_*_DBS-all_*.nc",
+    "variables": [
+        "vomecrty",
+        "votemper",
+        "vosaline",
+        "vozocrtx"
     ],
-    "variable_map": {
-        "SeaWaterSalinity": "vomecrty",
-        "SeaWaterPotentialTemp": "votemper",
-        "SeaWaterVelocityY": "vosaline",
-        "SeaWaterVelocityX": "vozocrtx"
-    },
     "drop_vars": [
         "latitude_longitude"
     ],

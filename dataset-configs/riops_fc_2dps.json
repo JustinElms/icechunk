@@ -1,31 +1,25 @@
 {
     "name": "riops_fc_2dps",
-    "data_path_template": "/data/hpfx.collab.science.gc.ca/{forecast_date}/WXO-DD/model_riops/netcdf/forecast/polar_stereographic/2d/{forecast_run}/{forecast_time}/*_MSC_RIOPS_{variable}_*.nc",
-    "template_keys": [
-        "forecast_date",
-        "forecast_run",
-        "forecast_time",
-        "variable"
+    "data_path_template": "/data/hpfx.collab.science.gc.ca/*/WXO-DD/model_riops/netcdf/forecast/polar_stereographic/2d/*/*/*T*Z_MSC_RIOPS_*_*_PS5km_P*.nc",
+    "variables": [
+        "vozocrtx",
+        "vomecrty",
+        "votemper",
+        "vosaline",
+        "sossheig",
+        "iiceconc",
+        "iicevol",
+        "somixhgt",
+        "sokaraml",
+        "iicesurftemp",
+        "isnowvol",
+        "itmecrty",
+        "itzocrtx",
+        "iicestrength",
+        "iicepressure",
+        "iicedivergence",
+        "iiceshear"
     ],
-    "variable_map": {
-        "VOZOCRTX": "vozocrtx",
-        "VOMECRTY": "vomecrty",
-        "VOTEMPER": "votemper",
-        "VOSALINE": "vosaline",
-        "SOSSHEIG": "sossheig",
-        "IICECONC": "iiceconc",
-        "IICEVOL": "iicevol",
-        "SOMIXHGT": "somixhgt",
-        "SOKARAML": "sokaraml",
-        "IICESURFTEMP": "iicesurftemp",
-        "ISNOWVOL": "isnowvol",
-        "ITMECRTY": "itmecrty",
-        "ITZOCRTX": "itzocrtx",
-        "IICESTRENGTH": "iicestrength",
-        "IICEPRESSURE": "iicepressure",
-        "IICEDIVERGENCE": "iicedivergence",
-        "IICESHEAR": "iiceshear"
-    },
     "drop_vars": [
         "polar_stereographic"
     ],

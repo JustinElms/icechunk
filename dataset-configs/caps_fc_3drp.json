@@ -1,18 +1,12 @@
 {
     "name": "caps_fc_3drp",
-    "data_path_template": "/data/hpfx.collab.science.gc.ca/{forecast_date}/WXO-DD/model_caps/3km/{forecast_run}/{forecast_time}/*_MSC_CAPS_{variable}_DBS-all_*.nc",
-    "template_keys": [
-        "forecast_date",
-        "forecast_run",
-        "forecast_time",
-        "variable"
+    "data_path_template": "/data/hpfx.collab.science.gc.ca/*/WXO-DD/model_caps/3km/*/*/*T*Z_MSC_CAPS_*_DBS-all_RLatLon0.03_PT*.nc",
+    "variables": [
+        "vosaline",
+        "votemper",
+        "vozocrtx",
+        "vomecrty"
     ],
-    "variable_map": {
-        "SeaWaterSalinity": "vosaline",
-        "SeaWaterTemp": "votemper",
-        "SeaWaterVelocityX": "vozocrtx",
-        "SeaWaterVelocityY": "vomecrty"
-    },
     "drop_vars": [
         "rotated_pole"
     ],

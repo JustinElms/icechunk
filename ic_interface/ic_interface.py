@@ -131,11 +131,10 @@ class IcechunkInterface:
         timestamps = self.get_repo_timestamps(branch)
 
         session = self.repo.readonly_session(branch)
-        chunks = session.store.list()
-        time_chunks = [chunk for chunk in chunks if "time/c/" in chunk]
-        time_indexes = [int(tc.replace("time/c/", "")) for tc in time_chunks]
+        with xr.open_zarr(session.store, consolidated=False, decode_times=False) as ds:
+            timestamps = ds.time.data
 
-        return {int(ts): i for ts, i in zip(timestamps, time_indexes)}
+        return {int(ts): i for i, ts in enumerate(timestamps)}
 
     def create_branch(self, branch_id: str) -> None:
         """ """
@@ -174,13 +173,8 @@ class IcechunkInterface:
         Returns:
             A list of NetCDF files from the dataset.
         """
-
-        template_keys = self.dataset_config["template_keys"]
-
         nc_files = glob.glob(
-            self.dataset_config["data_path_template"].format(
-                **{k: "*" for k in template_keys}
-            )
+            self.dataset_config["data_path_template"]
         )
 
         filter_keys = self.dataset_config.get("path_filters")
@@ -203,50 +197,20 @@ class IcechunkInterface:
 
         return time_chunk_index
 
-    def nc_file_path_fcst_info(self, nc_files: list) -> pd.DataFrame:
+    def nc_file_var_ts(self, row: pd.Series, drop_vars=None) -> list:
         """
-        Parses netcdf file names for forecast metadata using data_path_template.
+        Extracts timestamps and variable names from NetCDF files.
 
         Args:
-            nc_files: a list of NetCDF files to process.
+            row: a pandas series containing NetCDF files
 
         Returns:
-            pd.DataFrame: a datafame of NetCDF files and metadata parsed from the
-                    dataset's path template keys.
+            tuple: a list of variables and timestamps.
         """
-
-        path_template = self.dataset_config["data_path_template"]
-        # Remove file extension and wildcards
-        path_template = path_template.rsplit(".", 1)[0].replace("*", "")
-
-        template_keys = self.dataset_config["template_keys"]
-        variable_map = self.dataset_config.get("variable_map")
-
-        nc_pts = np.array([str(f).split("/") for f in nc_files])
-        template_pts = np.array(path_template.split("/"))
-
-        field_keys = {}
-        for key in template_keys:
-            for key_idx, t_pt in enumerate(template_pts):
-                if key in t_pt:
-                    field_keys[key] = key_idx
-                    key = "{" + key + "}"
-                    if len(template_pts[key_idx]) > len(key):
-                        bounds = t_pt.split(key)
-                        for nc_idx, nc_pt in enumerate(nc_pts[:, key_idx]):
-                            i_0 = nc_pt.find(bounds[0]) + len(bounds[0])
-                            nc_pt = nc_pt[i_0:]
-                            i_1 = nc_pt.find(bounds[1])
-                            nc_pts[nc_idx, key_idx] = nc_pt[:i_1]
-
-        nc_df = pd.DataFrame()
-        for key, key_idx in field_keys.items():
-            nc_df[key] = nc_pts[:, key_idx]
-        if variable_map and "variable" in template_keys:
-            nc_df["variable"] = nc_df["variable"].apply(lambda v: variable_map[v])
-        nc_df["file"] = nc_files
-
-        return nc_df
+        with xr.open_dataset(
+            row.file, drop_variables=drop_vars, decode_times=False
+        ) as ds:
+            return list(ds.data_vars), ds.time.data
 
     def get_nc_file_info(
         self,
@@ -275,77 +239,56 @@ class IcechunkInterface:
         if len(nc_files) == 0:
             nc_files = self.get_dataset_nc_files(skip_existing)
 
-        nc_info = self.nc_file_path_fcst_info(nc_files)
+        variables = self.dataset_config.get("variables")
+        drop_vars = self.dataset_config.get("drop_vars")
 
-        template_keys = self.dataset_config["template_keys"]
+        nc_info = pd.DataFrame(nc_files, columns=["file"])
+        nc_info[["variable", "timestamp"]] = nc_info.apply(
+            lambda row: self.nc_file_var_ts(row, drop_vars),
+            axis=1,
+            result_type="expand",
+        )
 
-        if self.dataset_config.get("latest_only"):
-            for k in template_keys:
-                if "variable" in k:
-                    continue
-                nc_info = nc_info.loc[nc_info[k] == nc_info[k].max()]
-        elif "forecast_date" in template_keys:
-            nc_info["datetime"] = pd.to_datetime(
-                nc_info["forecast_date"], format="%Y%m%d"
-            )
+        nc_info = nc_info.explode("variable").explode("timestamp", ignore_index=True)
+        nc_info = nc_info.sort_values(by=["timestamp", "variable", "file"]).reset_index(
+            drop=True
+        )
+        nc_info.drop_duplicates(
+            subset=["timestamp", "variable"], keep="last", inplace=True
+        )
 
-            # filter forecast data by given dates
-            if start_date:
-                start_date = datetime.strptime(start_date, "%Y%m%d")
-                nc_info = nc_info[nc_info["datetime"] >= start_date]
-
-            if end_date:
-                end_date = datetime.strptime(end_date, "%Y%m%d")
-                nc_info = nc_info[nc_info["datetime"] <= end_date]
-
-            # calculate timestamps
-            if "forecast_run" in template_keys:
-                nc_info["datetime"] = nc_info["datetime"] + pd.to_timedelta(
-                    nc_info["forecast_run"].astype(int).values, unit="hours"
-                )
-
-            if "forecast_time" in template_keys:
-                nc_info["datetime"] = nc_info["datetime"] + pd.to_timedelta(
-                    nc_info["forecast_time"].astype(int).values, unit="hours"
-                )
-
-            if self.dataset_config.get("timestamp_offset"):
-                nc_info["datetime"] = nc_info["datetime"] + pd.to_timedelta(
-                    self.dataset_config.get("timestamp_offset"), unit="hours"
-                )
-
-            nc_info["timestamp"] = cftime.date2num(
-                nc_info["datetime"].values.astype(datetime),
+        # filter forecast data by given dates
+        if start_date:
+            start_timestamp = cftime.date2num(
+                datetime.strptime(start_date, "%Y%m%d"),
                 self.dataset_config["time_dim_units"],
             )
+            nc_info = nc_info[nc_info["datetime"] >= start_timestamp]
 
-            nc_info = nc_info.sort_values(
-                by=[
-                    "timestamp",
-                    *template_keys,
-                ]
-            ).reset_index(drop=True)
+        if end_date:
+            end_timestamp = cftime.date2num(
+                datetime.strptime(end_date, "%Y%m%d"),
+                self.dataset_config["time_dim_units"],
+            )
+            nc_info = nc_info[nc_info["datetime"] <= end_timestamp]
 
-            # only keep most recent timestamp for each variable
-            filter_keys = [k for k in ["timestamp", "variable"] if k in nc_info.columns]
-            if len(filter_keys) > 0:
-                nc_info.drop_duplicates(subset=filter_keys, keep="last", inplace=True)
+        # ensure each timestamp includes all variables
+        ts_file_counts = nc_info.groupby(["timestamp"])["file"].transform("size")
+        if variables:
+            nc_info = nc_info[(ts_file_counts == len(variables))]
+        else:
+            nc_info = nc_info[(ts_file_counts == ts_file_counts.max())]
 
-            # ensure each timestamp includes all variables
-            ts_file_counts = nc_info.groupby(["timestamp"])["file"].transform("size")
-            if "variable_map" in template_keys:
-                nc_info = nc_info[
-                    (ts_file_counts == len(self.dataset_config["variable_map"]))
-                ]
-            else:
-                nc_info = nc_info[(ts_file_counts == ts_file_counts.max())]
+        if self.dataset_config.get("latest_only"):
+            nc_info = nc_info.loc[nc_info["timestamp"] == nc_info["timestamp"].max()]
 
-            # condense dataframe
-            group_columns = [
-                c for c in nc_info.columns if c not in ["file", "variable"]
-            ]
-            list_cols = [c for c in ["file", "variable"] if c in nc_info.columns]
-            nc_info = nc_info.groupby(group_columns)[list_cols].agg(list).reset_index()
+        # group by file and timestamp
+        nc_info = nc_info.groupby("file").agg(list).reset_index()
+        nc_info["timestamp"] = nc_info["timestamp"].map(lambda ts: tuple(np.unique(ts)))
+        nc_info = nc_info.groupby("timestamp").agg(list).reset_index()
+        nc_info["variable"] = nc_info["variable"].apply(
+            lambda v: np.unique(np.concat(v))
+        )
 
         return nc_info
 
@@ -387,8 +330,11 @@ class IcechunkInterface:
             None
         """
 
-        timestamps = sorted(nc_file_info.timestamp.unique())
-        ts_data = nc_file_info.loc[nc_file_info["timestamp"] == timestamps[0]]
+        timestamps = nc_file_info.timestamp.explode("timestamp").unique()
+
+        ts_mask = nc_file_info.timestamp.apply(lambda ts: timestamps.min() in ts)
+        ts_data = nc_file_info[ts_mask]
+
         nc_files = ts_data["file"].values[0]
         parser_type = self.dataset_config.get("parser")
         drop_vars = self.dataset_config.get("drop_vars")
@@ -413,10 +359,12 @@ class IcechunkInterface:
             decode_times=False,
         ) as vds:
             vds.vz.to_icechunk(session.store)
-
-        commit_msg = f"Initialized data arrays with timestamp(s) {timestamps[0]}"
+            timestamps = [ts for ts in timestamps if ts not in vds.time.data]
+            commit_msg = (
+                f"Initialized data arrays with timestamp(s) {vds.time.data.astype(int)}"
+            )
 
         session.commit(commit_msg)
         self.logger.info(commit_msg)
 
-        self.append_timestamps(timestamps[1:])
+        self.append_timestamps(timestamps)

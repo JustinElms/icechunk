@@ -1,6 +1,7 @@
 {
     "dataset_configs_dir": "/home/ubuntu/icechunk/dataset-configs",
     "log_directory": "/home/ubuntu/icechunk/logs/",
+    "storage_type":"minio",
     "s3_config": {
         "bucket": "icechunk",
         "user": "admin",

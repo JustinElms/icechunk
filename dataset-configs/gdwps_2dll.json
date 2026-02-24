@@ -1,0 +1,27 @@
+{
+    "name": "gdwps_2dll",
+    "latest_only": true,
+    "data_path_template": "/data/hpfx.collab.science.gc.ca/*/WXO-DD/model_gdwps/25km/*/*_MSC_GDWPS_*_*_PT*H.grib2",
+    "variables": [
+        "wvdir",
+        "icec",
+        "mzwper",
+        "mwdfswel",
+        "mwdsswel",
+        "pperww",
+        "pwper",
+        "pwavedir",
+        "pwpfswel",
+        "pwpsswel",
+        "htsgw",
+        "wvhgt",
+        "swhfswel",
+        "swhsswel",
+        "ugrd",
+        "vgrd"
+    ],
+    "drop_vars": [
+        "latitude_longitude"
+    ],
+    "time_dim_units": "seconds since 1950-01-01 00:00:00"
+}
