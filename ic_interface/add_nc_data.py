@@ -67,7 +67,7 @@ if __name__ == "__main__":
     ic_interface = IcechunkInterface(args.key)
     dataset_config = ic_interface.dataset_config
     initialized = ic_interface.initialized
-    ic_interface.logger.info("\n***\n Startting add_nc_data.py script. \n***")
+    ic_interface.logger.info("\n***\n Starting add_nc_data.py script. \n***")
 
     nc_files = args.nc_files
     if args.nc_dir:
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     )
 
     branch = "main"
-    if not ic_interface.initialized:
+    if not initialized:
         ic_interface.initialize_repo_arrays(nc_file_info)
     else:
         branch = f"append_{datetime.now().isoformat()}"
@@ -140,7 +140,7 @@ if __name__ == "__main__":
                 ic_interface.logger.info(f"Files added:\n    {'\n    '.join(nc_files)}")
             except Exception as e:
                 ic_interface.logger.error(e)
-                ic_interface.logger.info(
+                ic_interface.logger.error(
                     f"Error in files:\n    {'\n    '.join(nc_files)}"
                 )
             pbar.update(len(idx_group))
@@ -149,3 +149,5 @@ if __name__ == "__main__":
         snapshot_id = ic_interface.repo.lookup_branch(branch)
         ic_interface.set_branch_ref("main", snapshot_id)
         ic_interface.delete_branch(branch)
+
+    ic_interface.logger.info("\n***\n Finished add_nc_data.py script. \n***")

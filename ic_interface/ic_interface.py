@@ -103,11 +103,13 @@ class IcechunkInterface:
 
     def __configure_logger(self, dataset_key: str) -> None:
 
-        log_path = self.ic_config.get("log_directory")
+        log_dir = self.ic_config.get("log_directory")
 
-        os.makedirs(log_path, exist_ok=True)
+        os.makedirs(log_dir, exist_ok=True)
 
-        file_handler = logging.FileHandler(f"{log_path}{dataset_key}.log")
+        self.log_path = f"{log_dir}{dataset_key}.log"
+
+        file_handler = logging.FileHandler(self.log_path)
 
         logging.basicConfig(
             level=logging.INFO,
