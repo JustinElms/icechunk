@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import cftime
@@ -202,7 +203,8 @@ class IcechunkInterface:
 
         return time_chunk_index
 
-    def nc_file_var_ts(self, row: pd.Series, drop_vars=None) -> list:
+    @staticmethod
+    def nc_file_var_ts(nc_file: str, drop_vars=None) -> list:
         """
         Extracts timestamps and variable names from NetCDF files.
 
@@ -213,9 +215,9 @@ class IcechunkInterface:
             tuple: a list of variables and timestamps.
         """
         with xr.open_dataset(
-            row.file, drop_variables=drop_vars, decode_times=False
+            nc_file, drop_variables=drop_vars, decode_times=False
         ) as ds:
-            return list(ds.data_vars), ds.time.data
+            return [nc_file, list(ds.data_vars), ds.time.data]
 
     def get_nc_file_info(
         self,
@@ -247,13 +249,25 @@ class IcechunkInterface:
         variables = self.dataset_config.get("variables")
         drop_vars = self.dataset_config.get("drop_vars")
 
-        nc_info = pd.DataFrame(nc_files, columns=["file"])
-        nc_info[["variable", "timestamp"]] = nc_info.apply(
-            lambda row: self.nc_file_var_ts(row, drop_vars),
-            axis=1,
-            result_type="expand",
-        )
+        file_data = []
+        max_workers = int(os.cpu_count() / 2)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(
+                    self.nc_file_var_ts, nc_file=nc_file, drop_vars=drop_vars
+                )
+                for nc_file in nc_files
+            ]
 
+            for future in as_completed(futures):
+                try:
+                    file_data.append(future.result())
+                except Exception as e:
+                    self.logger.error(
+                        f"Could not extract NetCDF variable data. \n    {e}"
+                    )
+
+        nc_info = pd.DataFrame(file_data, columns=["file", "variable", "timestamp"])
         nc_info = nc_info.explode("variable").explode("timestamp", ignore_index=True)
         nc_info = nc_info.sort_values(by=["timestamp", "variable", "file"]).reset_index(
             drop=True
