@@ -138,13 +138,18 @@ class IcechunkInterface:
 
         return {int(ts): i for i, ts in enumerate(timestamps)}
 
-    def create_branch(self, branch_id: str) -> None:
+    def create_branch(self, branch_id: str, from_init: bool = False) -> None:
         """ """
         branches = list(self.repo.list_branches())
         if branch_id in branches:
             return
-        snap_id = self.repo.lookup_branch("main")
-        self.repo.create_branch(branch_id, snapshot_id=snap_id)
+
+        ancestry_list = list(self.repo.ancestry(branch="main"))
+        snapshot = ancestry_list[0]
+        if from_init:
+            snapshot = ancestry_list[-1]
+
+        self.repo.create_branch(branch_id, snapshot_id=snapshot.id)
 
     def delete_branch(self, branch_id: str) -> None:
         """ """
@@ -175,9 +180,7 @@ class IcechunkInterface:
         Returns:
             A list of NetCDF files from the dataset.
         """
-        nc_files = glob.glob(
-            self.dataset_config["data_path_template"]
-        )
+        nc_files = glob.glob(self.dataset_config["data_path_template"])
 
         filter_keys = self.dataset_config.get("path_filters")
         if filter_keys:
@@ -321,7 +324,9 @@ class IcechunkInterface:
         session.commit(commit_msg)
         self.logger.info(commit_msg)
 
-    def initialize_repo_arrays(self, nc_file_info: pd.DataFrame) -> None:
+    def initialize_repo_arrays(
+        self, nc_file_info: pd.DataFrame, branch: str = "main"
+    ) -> None:
         """
         Initializes dataset coordinate and variable arrays in repository.
 
@@ -351,7 +356,7 @@ class IcechunkInterface:
         store = LocalStore(prefix="/data/")
         registry = ObjectStoreRegistry({file_url: store for file_url in file_urls})
 
-        session = self.repo.writable_session("main")
+        session = self.repo.writable_session(branch)
         with open_virtual_mfdataset(
             urls=file_urls,
             parser=parser,
@@ -369,4 +374,5 @@ class IcechunkInterface:
         session.commit(commit_msg)
         self.logger.info(commit_msg)
 
-        self.append_timestamps(timestamps)
+        if len(timestamps) > 0:
+            self.append_timestamps(timestamps)

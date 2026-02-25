@@ -37,16 +37,19 @@ def listener_configurer(log_path: str):
 
 
 def validate_repo_data(session: Session, nc_file: str, drop_vars: list | None) -> None:
-    ic_ds = xr.open_zarr(session.store, consolidated=False, decode_times=False)
-    with xr.open_dataset(nc_file, drop_variables=drop_vars, decode_times=False) as ds:
+    ic_ds = xr.open_zarr(
+        session.store, consolidated=False, decode_times=False, decode_cf=False
+    )
+    with xr.open_dataset(
+        nc_file, drop_variables=drop_vars, decode_times=False, decode_cf=False
+    ) as ds:
         ic_subset = ic_ds.sel(time=ds.time)
         for var in ds.data_vars:
             try:
                 xr.testing.assert_equal(ds[var], ic_subset[var])
-            except AssertionError:
-                ic_interface.logger.critical(
-                    "Validation failed for file \n    " f"{str(nc_file)}"
-                )
+            except AssertionError as e:
+                logging.critical("Validation failed for file \n    " f"{str(nc_file)}")
+                logging.critical(e)
 
 
 if __name__ == "__main__":
@@ -84,12 +87,15 @@ if __name__ == "__main__":
     n_files = len(nc_files)
 
     rng = np.random.default_rng()
-    sample_idx = rng.choice(np.arange(n_files), size=int(n_files * args.coverage / 100))
+    sample_size = int(n_files * args.coverage / 100)
+    if sample_size < 1:
+        sample_size = 1
+    sample_idx = rng.choice(np.arange(n_files), size=sample_size)
     sample_files = nc_files[sample_idx]
 
-    sample_groups = np.array_split(sample_files, len(sample_files) / max_workers / 2)
+    sample_groups = np.array_split(sample_files, np.ceil(sample_size / max_workers / 2))
 
-    with tqdm(total=len(sample_files)) as pbar:
+    with tqdm(total=sample_size) as pbar:
         for sample_group in sample_groups:
             session = ic_interface.repo.readonly_session("main")
             with ProcessPoolExecutor(
