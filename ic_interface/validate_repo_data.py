@@ -8,7 +8,6 @@ from logging.handlers import QueueListener
 import numpy as np
 import xarray as xr
 from icechunk import Session
-
 from tqdm import tqdm
 
 from ic_interface import IcechunkInterface
@@ -95,6 +94,7 @@ if __name__ == "__main__":
 
     sample_groups = np.array_split(sample_files, np.ceil(sample_size / max_workers / 2))
 
+    print("Validating repository NetCDF data.")
     with tqdm(total=sample_size) as pbar:
         for sample_group in sample_groups:
             session = ic_interface.repo.readonly_session("main")

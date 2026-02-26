@@ -12,6 +12,7 @@ import pandas as pd
 import xarray as xr
 import zarr
 from obstore.store import LocalStore
+from tqdm import tqdm
 from virtualizarr import open_virtual_mfdataset
 from virtualizarr.parsers import HDFParser, NetCDF3Parser
 from virtualizarr.registry import ObjectStoreRegistry
@@ -249,23 +250,26 @@ class IcechunkInterface:
         variables = self.dataset_config.get("variables")
         drop_vars = self.dataset_config.get("drop_vars")
 
+        print("Scanning NetCDF data.")
         file_data = []
         max_workers = int(os.cpu_count() / 2)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(
-                    self.nc_file_var_ts, nc_file=nc_file, drop_vars=drop_vars
-                )
-                for nc_file in nc_files
-            ]
-
-            for future in as_completed(futures):
-                try:
-                    file_data.append(future.result())
-                except Exception as e:
-                    self.logger.error(
-                        f"Could not extract NetCDF variable data. \n    {e}"
+        with tqdm(total=len(nc_files)) as pbar:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(
+                        self.nc_file_var_ts, nc_file=nc_file, drop_vars=drop_vars
                     )
+                    for nc_file in nc_files
+                ]
+
+                for future in as_completed(futures):
+                    try:
+                        file_data.append(future.result())
+                        pbar.update(1)
+                    except Exception as e:
+                        self.logger.error(
+                            f"Could not extract NetCDF variable data. \n    {e}"
+                        )
 
         nc_info = pd.DataFrame(file_data, columns=["file", "variable", "timestamp"])
         nc_info = nc_info.explode("variable").explode("timestamp", ignore_index=True)

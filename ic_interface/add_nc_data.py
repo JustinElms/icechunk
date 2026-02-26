@@ -114,6 +114,7 @@ if __name__ == "__main__":
             nc_file_info.index, np.ceil(len(nc_file_info.index) / max_workers / 2)
         )
 
+        print("Appending NetCDF data to repository.")
         with tqdm(total=len(nc_file_info)) as pbar:
             for idx_group in idx_groups:
                 group_df = nc_file_info.loc[idx_group]
