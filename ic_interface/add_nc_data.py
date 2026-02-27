@@ -1,6 +1,7 @@
 import argparse
 import multiprocessing as mp
 import os
+import sys
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -68,7 +69,11 @@ if __name__ == "__main__":
     dataset_config = ic_interface.dataset_config
     latest_only = dataset_config.get("latest_only")
     initialized = ic_interface.initialized
-    ic_interface.logger.info("\n***\n Starting add_nc_data.py script. \n***")
+    arg_values = [f"{k}: {i}" for k, i in vars(args).items()]
+    ic_interface.logger.info(
+        "\n***\n Starting add_nc_data.py script with arguments:"
+        f"\n    {"\n    ".join(arg_values)} \n***"
+    )
 
     nc_files = args.nc_files
     if args.nc_dir:
@@ -77,6 +82,11 @@ if __name__ == "__main__":
     nc_file_info = ic_interface.get_nc_file_info(
         nc_files, args.start_date, args.end_date, args.skip_existing
     )
+
+    if len(nc_file_info) == 0:
+        ic_interface.logger.warning("No new data to append.")
+        ic_interface.logger.info("\n***\n Finished add_nc_data.py script. \n***")
+        sys.exit()
 
     branch = f"append_{datetime.now().isoformat()}"
     if latest_only:
@@ -144,8 +154,9 @@ if __name__ == "__main__":
                         f"Wrote {len(group_ts)} timestamps "
                         f"{int(group_ts.min())} - {int(group_ts.max())}"
                     )
-                    session.commit(commit_msg)
+                    snap_id = session.commit(commit_msg)
                     ic_interface.logger.info(commit_msg)
+                    ic_interface.logger.info(f"Snapshot ID: {snap_id}")
                     ic_interface.logger.info(
                         f"Files added:\n    {'\n    '.join(nc_files)}"
                     )
