@@ -172,28 +172,6 @@ class IcechunkInterface:
 
         return set(file_list)
 
-    def get_dataset_nc_files(self, skip_existing) -> list:
-        """
-        Gets all netcdf files in the datastore using dataset data_path_template.
-
-        Args:
-            skip_existing: Exclude files already referenced by the repo.
-
-        Returns:
-            A list of NetCDF files from the dataset.
-        """
-        nc_files = glob.glob(self.dataset_config["data_path_template"])
-
-        filter_keys = self.dataset_config.get("path_filters")
-        if filter_keys:
-            nc_files = [f for f in nc_files if all([k not in f for k in filter_keys])]
-
-        if skip_existing:
-            current_nc_files = self.get_virtual_file_list()
-            nc_files = [f for f in nc_files if f not in current_nc_files]
-
-        return nc_files
-
     def get_timestamp_index(self, timestamp: int, repo_timestamps: list) -> int | None:
 
         time_chunk_index = None
@@ -243,12 +221,22 @@ class IcechunkInterface:
             list: a list of inputs that can be passed to write_timestamp formatted
                 for multiprocessing
         """
-
-        if len(nc_files) == 0:
-            nc_files = self.get_dataset_nc_files(skip_existing)
-
+        path_template = self.dataset_config["data_path_template"]
+        path_filters = self.dataset_config.get("path_filters")
         variables = self.dataset_config.get("variables")
         drop_vars = self.dataset_config.get("drop_vars")
+
+        if len(nc_files) == 0:
+            nc_files = glob.glob(path_template)
+
+        if path_filters:
+            nc_files = [
+                f for f in nc_files if all([k not in str(f) for k in path_filters])
+            ]
+
+        if skip_existing:
+            current_nc_files = self.get_virtual_file_list()
+            nc_files = [f for f in nc_files if str(f) not in current_nc_files]
 
         print("Scanning NetCDF data.")
         file_data = []
