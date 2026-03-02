@@ -39,12 +39,6 @@ warnings.filterwarnings("ignore", category=zarr.errors.UnstableSpecificationWarn
 # TODO:
 # - Add functionality to remove data (e.g. timestamps older than 2 yrs)
 # - Add function to clean up datastore (remove unused files)
-# - Add error handling and other user feedback
-# - Add function to spot check data
-# - Add verification of dataset and ic config file - raise errors for bad or missing
-#   values
-# - Add option in config for all variables in one NC file
-# - Add option in config for multiple timestamps in one NC file
 
 
 class IcechunkInterface:
