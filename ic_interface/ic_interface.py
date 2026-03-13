@@ -190,7 +190,8 @@ class IcechunkInterface:
         with xr.open_dataset(
             nc_file, drop_variables=drop_vars, decode_times=False
         ) as ds:
-            return [nc_file, list(ds.data_vars), ds.time.data]
+            timestamps = [int(t) for t in ds.time.data]
+            return [nc_file, list(ds.data_vars), timestamps]
 
     def get_nc_file_info(
         self,
