@@ -102,8 +102,8 @@ if __name__ == "__main__":
             ic_interface.create_branch(branch)
 
         timestamps = nc_file_info.timestamp.explode("timestamp").unique()
-        time_chunk_map = {ts: None for ts in timestamps}
-        while not any(time_chunk_map.values()):
+        time_chunk_map = {int(ts): None for ts in timestamps}
+        while None in time_chunk_map.values():
             time_chunk_map = {
                 **time_chunk_map,
                 **ic_interface.get_time_chunk_map(branch),

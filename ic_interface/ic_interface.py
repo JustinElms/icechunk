@@ -290,7 +290,9 @@ class IcechunkInterface:
 
         # group by file and timestamp
         nc_info = nc_info.groupby("file").agg(list).reset_index()
-        nc_info["timestamp"] = nc_info["timestamp"].map(lambda ts: tuple(np.unique(ts)))
+        nc_info["timestamp"] = nc_info["timestamp"].map(
+            lambda ts: tuple(np.unique(ts).astype(int))
+        )
         nc_info = nc_info.groupby("timestamp").agg(list).reset_index()
         nc_info["variable"] = nc_info["variable"].apply(
             lambda v: np.unique(np.concat(v))
