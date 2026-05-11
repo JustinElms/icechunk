@@ -1,3 +1,4 @@
+import fnmatch
 import glob
 import json
 import logging
@@ -223,6 +224,8 @@ class IcechunkInterface:
 
         if len(nc_files) == 0:
             nc_files = glob.glob(path_template)
+        else:
+            nc_files = fnmatch.filter([str(f) for f in nc_files], path_template)
 
         if path_filters:
             nc_files = [
