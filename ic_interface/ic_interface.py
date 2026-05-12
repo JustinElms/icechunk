@@ -37,6 +37,23 @@ warnings.filterwarnings(
 )
 warnings.filterwarnings("ignore", category=zarr.errors.UnstableSpecificationWarning)
 
+COORDINATE_VARIABLES = [
+    "nav_lat_u",
+    "nav_lon_u",
+    "nav_lat_v",
+    "nav_lon_v",
+    "nav_lat",
+    "nav_lon",
+    "latitude_u",
+    "longitude_u",
+    "latitude_v",
+    "longitude_v",
+    "latitude",
+    "longitude",
+    "lat",
+    "lon",
+]
+
 # TODO:
 # - Add functionality to remove data (e.g. timestamps older than 2 yrs)
 # - Add function to clean up datastore (remove unused files)
@@ -265,6 +282,8 @@ class IcechunkInterface:
         nc_info.drop_duplicates(
             subset=["timestamp", "variable"], keep="last", inplace=True
         )
+        if variables:
+            nc_info = nc_info[nc_info['variable'].isin(variables)]
 
         # filter forecast data by given dates
         if start_date:
@@ -371,6 +390,11 @@ class IcechunkInterface:
             compat="override",
             decode_times=False,
         ) as vds:
+            # check if any coordinates are erroniously included in data variables
+            coord_data_vars = [v for v in vds.data_vars if v in COORDINATE_VARIABLES]
+            for cdv in coord_data_vars:
+                vds = vds.set_coords(cdv)
+
             vds.vz.to_icechunk(session.store)
             timestamps = [ts for ts in timestamps if ts not in vds.time.data]
             commit_msg = (
