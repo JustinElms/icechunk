@@ -8,6 +8,5 @@
         "uos",
         "sos"
     ],
-    "time_dim_units": "seconds since 1950-01-01 00:00:00",
-    "parser": "nc3"
+    "time_dim_units": "seconds since 1950-01-01 00:00:00"
 }
