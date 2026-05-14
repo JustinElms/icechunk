@@ -1,0 +1,13 @@
+{
+    "name": "stle500-hindcast",
+    "latest_only": true,
+    "data_path_template": "/data/hpfx.collab.science.gc.ca/dfo/pops_model_hindcast/stle500/*/*.nc",
+    "variables": [
+        "to",
+        "vo",
+        "uo",
+        "so",
+        "zos"
+    ],
+    "time_dim_units": "seconds since 1950-01-01 00:00:00"
+}
