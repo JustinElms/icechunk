@@ -1,6 +1,5 @@
 {
     "name": "sss150-hindcast",
-    "latest_only": true,
     "data_path_template": "/data/hpfx.collab.science.gc.ca/dfo/pops_model_hindcast/sss150/*/*.nc",
     "variables": [
         "to",
