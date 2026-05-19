@@ -307,9 +307,6 @@ class IcechunkInterface:
         else:
             nc_info = nc_info[(ts_file_counts == ts_file_counts.max())]
 
-        if self.dataset_config.get("latest_only"):
-            nc_info = nc_info.loc[nc_info["timestamp"] == nc_info["timestamp"].max()]
-
         # group by file and timestamp
         nc_info = nc_info.groupby("file").agg(list).reset_index()
         nc_info["timestamp"] = nc_info["timestamp"].map(
@@ -337,7 +334,7 @@ class IcechunkInterface:
                 dims = array.metadata.dimension_names
                 try:
                     time_idx = dims.index("time")
-                except ValueError:
+                except (AttributeError, ValueError):
                     continue
                 shape = list(array.shape)
                 shape[time_idx] = shape[time_idx] + len(timestamps)
@@ -406,3 +403,5 @@ class IcechunkInterface:
 
         if len(timestamps) > 0:
             self.append_timestamps(timestamps)
+
+        return nc_file_info[~ts_mask]

@@ -91,81 +91,83 @@ if __name__ == "__main__":
     branch = f"append_{datetime.now().isoformat()}"
     if latest_only:
         ic_interface.create_branch(branch, from_init=True)
-        ic_interface.initialize_repo_arrays(nc_file_info, branch)
+        nc_file_info = ic_interface.initialize_repo_arrays(nc_file_info, branch)
+    elif not initialized:
+        branch = "main"
+        nc_file_info = ic_interface.initialize_repo_arrays(nc_file_info, branch)
     else:
-        if not initialized:
-            branch = "main"
-            ic_interface.initialize_repo_arrays(nc_file_info)
-        else:
-            if branch in ic_interface.repo.list_branches():
-                ic_interface.delete_branch(branch)
-            ic_interface.create_branch(branch)
+        if branch in ic_interface.repo.list_branches():
+            ic_interface.delete_branch(branch)
+        ic_interface.create_branch(branch)
 
-        timestamps = nc_file_info.timestamp.explode("timestamp").unique()
-        time_chunk_map = {int(ts): None for ts in timestamps}
-        while None in time_chunk_map.values():
-            time_chunk_map = {
-                **time_chunk_map,
-                **ic_interface.get_time_chunk_map(branch),
-            }
-            new_timestamps = [
-                ts for ts in time_chunk_map.keys() if time_chunk_map[ts] is None
-            ]
+    if len(nc_file_info) == 0:
+        sys.exit()
 
-            if len(new_timestamps) == 0:
-                continue
-            ic_interface.append_timestamps(new_timestamps, branch)
+    timestamps = nc_file_info.timestamp.explode("timestamp").unique()
+    time_chunk_map = {int(ts): None for ts in timestamps}
+    while None in time_chunk_map.values():
+        time_chunk_map = {
+            **time_chunk_map,
+            **ic_interface.get_time_chunk_map(branch),
+        }
+        new_timestamps = [
+            ts for ts in time_chunk_map.keys() if time_chunk_map[ts] is None
+        ]
 
-        nc_file_info["time_chunk_map"] = nc_file_info.timestamp.apply(
-            lambda ts: {t: time_chunk_map[t] for t in ts}
-        )
+        if len(new_timestamps) == 0:
+            continue
+        ic_interface.append_timestamps(new_timestamps, branch)
 
-        idx_groups = np.array_split(
-            nc_file_info.index, np.ceil(len(nc_file_info.index) / max_workers / 2)
-        )
+    nc_file_info["time_chunk_map"] = nc_file_info.timestamp.apply(
+        lambda ts: {t: time_chunk_map[t] for t in ts}
+    )
 
-        print("Appending NetCDF data to repository.")
-        with tqdm(total=len(nc_file_info)) as pbar:
-            for idx_group in idx_groups:
-                group_df = nc_file_info.loc[idx_group]
-                group_ts = np.concat(group_df.timestamp.to_numpy())
-                try:
-                    session = ic_interface.repo.writable_session(branch)
-                    nc_files = [str(f) for files in group_df.file.values for f in files]
-                    with ProcessPoolExecutor(
-                        max_workers=max_workers,
-                    ) as executor:
-                        futures = []
-                        for idx, row in group_df.iterrows():
-                            futures.append(
-                                executor.submit(
-                                    write_chunk_refs,
-                                    session=session.fork(),
-                                    dataset_config=dataset_config,
-                                    nc_files=row.file,
-                                    time_chunk_map=row.time_chunk_map,
-                                )
+    idx_groups = np.array_split(
+        nc_file_info.index, np.ceil(len(nc_file_info.index) / max_workers / 2)
+    )
+
+    print("Appending NetCDF data to repository.")
+    with tqdm(total=len(nc_file_info)) as pbar:
+        for idx_group in idx_groups:
+            group_df = nc_file_info.loc[idx_group]
+            group_ts = np.concat(group_df.timestamp.to_numpy())
+            try:
+                session = ic_interface.repo.writable_session(branch)
+                nc_files = [str(f) for files in group_df.file.values for f in files]
+                with ProcessPoolExecutor(
+                    max_workers=max_workers,
+                ) as executor:
+                    futures = []
+                    for idx, row in group_df.iterrows():
+                        futures.append(
+                            executor.submit(
+                                write_chunk_refs,
+                                session=session.fork(),
+                                dataset_config=dataset_config,
+                                nc_files=row.file,
+                                time_chunk_map=row.time_chunk_map,
                             )
+                        )
 
-                        remote_sessions = [f.result() for f in futures]
+                    remote_sessions = [f.result() for f in futures]
 
-                    session.merge(*remote_sessions)
-                    commit_msg = (
-                        f"Wrote {len(group_ts)} timestamps "
-                        f"{int(group_ts.min())} - {int(group_ts.max())}"
-                    )
-                    snap_id = session.commit(commit_msg)
-                    ic_interface.logger.info(commit_msg)
-                    ic_interface.logger.info(f"Snapshot ID: {snap_id}")
-                    ic_interface.logger.info(
-                        f"Files added:\n    {'\n    '.join(nc_files)}"
-                    )
-                except Exception as e:
-                    ic_interface.logger.error(e)
-                    ic_interface.logger.error(
-                        f"Error in files:\n    {'\n    '.join(nc_files)}"
-                    )
-                pbar.update(len(idx_group))
+                session.merge(*remote_sessions)
+                commit_msg = (
+                    f"Wrote {len(group_ts)} timestamps "
+                    f"{int(group_ts.min())} - {int(group_ts.max())}"
+                )
+                snap_id = session.commit(commit_msg)
+                ic_interface.logger.info(commit_msg)
+                ic_interface.logger.info(f"Snapshot ID: {snap_id}")
+                ic_interface.logger.info(
+                    f"Files added:\n    {'\n    '.join(nc_files)}"
+                )
+            except Exception as e:
+                ic_interface.logger.error(e)
+                ic_interface.logger.error(
+                    f"Error in files:\n    {'\n    '.join(nc_files)}"
+                )
+            pbar.update(len(idx_group))
 
     if branch != "main":
         snapshot_id = ic_interface.repo.lookup_branch(branch)
